@@ -198,15 +198,14 @@ def create_clones(config, model_fn, args=None, kwargs=None):
           clones.append(Clone(outputs, clone_scope, clone_device))
   return clones
 
-# 加和正则化项损失
+# 加和所有损失 返回普通的总损失？？
 def _gather_clone_loss(clone, num_clones, regularization_losses):
   """Gather the loss for a single clone.
 
   Args:
     clone: A Clone namedtuple.
     num_clones: The number of clones being deployed.
-    regularization_losses: Possibly empty list of regularization_losses
-      to add to the clone losses.
+    regularization_losses: Possibly empty list of regularization_losses to add to the clone losses.
 
   Returns:
     A tensor for the total loss for the clone.  Can be None.
@@ -226,18 +225,20 @@ def _gather_clone_loss(clone, num_clones, regularization_losses):
         clone_loss = tf.div(clone_loss, 1.0 * num_clones, #除法操作
                             name='scaled_clone_loss')
       all_losses.append(clone_loss)
-    if regularization_losses:
+    if regularization_losses: 
       regularization_loss = tf.add_n(regularization_losses,
                                      name='regularization_loss')
       all_losses.append(regularization_loss)
     if all_losses:
       sum_loss = tf.add_n(all_losses) #实现一个列表的元素的相加
+
+  # 以下代码为tensorboard添加参数概要
   # Add the summaries out of the clone device block.
   if clone_loss is not None:
     tf.summary.scalar(clone.scope + '/clone_loss', clone_loss)
   if regularization_loss is not None:
     tf.summary.scalar('regularization_loss', regularization_loss)
-  return sum_loss
+  return sum_loss # sum_loss 就是 total_loss 
 
 
 def _optimize_clone(optimizer, clone, num_clones, regularization_losses,
@@ -263,7 +264,7 @@ def _optimize_clone(optimizer, clone, num_clones, regularization_losses,
   if sum_loss is not None:
     with tf.device(clone.device):
       clone_grad = optimizer.compute_gradients(sum_loss, **kwargs)
-  return sum_loss, clone_grad
+  return sum_loss, clone_grad # sum_loss 就是 total_loss
 
 
 def optimize_clones(clones, optimizer,
@@ -292,13 +293,21 @@ def optimize_clones(clones, optimizer,
   grads_and_vars = []
   clones_losses = []
   num_clones = len(clones)
+  
   if regularization_losses is None:
     regularization_losses = tf.get_collection(
         tf.GraphKeys.REGULARIZATION_LOSSES)
+  
+  """
+  DistributionNet:
+  num_clones = 1
+  clone_loss Tensor("AddN:0", shape=(), dtype=float32)
+  """
   for clone in clones:
     with tf.name_scope(clone.scope):
       clone_loss, clone_grad = _optimize_clone(
           optimizer, clone, num_clones, regularization_losses, **kwargs)
+
       if clone_loss is not None:
         clones_losses.append(clone_loss)
         grads_and_vars.append(clone_grad)

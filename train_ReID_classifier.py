@@ -11,7 +11,7 @@
 ########################################
 
 from __future__ import absolute_import # 加入绝对引入这个新特性 https://blog.csdn.net/caiqiiqi/article/details/51050800
-from __future__ import division # 导入精确除法“/”，若要执行截断除法，可以使用"//"操作符：
+from __future__ import division
 # from __future__ import print_function # 加上该句 在python2中 print 不需要加括号
 
 import tensorflow as tf
@@ -104,7 +104,7 @@ tf.app.flags.DEFINE_string('learning_rate_decay_type', 'exponential', 'Specifies
 tf.app.flags.DEFINE_float('label_smoothing', 0.1, 'The amount of label smoothing.')
 tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.95, 'Learning rate decay factor.')
 tf.app.flags.DEFINE_float('num_epochs_per_decay', 2.0, 'Number of epochs after which learning rate decays.')
-tf.app.flags.DEFINE_bool('sync_replicas', False, 'Whether or not to synchronize the replicas during training.')
+tf.app.flags.DEFINE_bool('sync_replicas', False, 'Whether or not to synchronize the replicas during training.') # 在训练过程中是否同步副本。
 tf.app.flags.DEFINE_integer('replicas_to_aggregate', 1, 'The Number of gradients to collect before updating params.')
 tf.app.flags.DEFINE_float('moving_average_decay', None, 'The decay to use for the moving average. If left as None, '
                                                         'then moving averages are not used.')
@@ -138,7 +138,7 @@ tf.app.flags.DEFINE_integer('model_snapshot_steps', 10000, 'Model save steps.')
 #####################
 
 tf.app.flags.DEFINE_string('checkpoint_path', None, 'The path to a checkpoint from which to fine-tune.')
-tf.app.flags.DEFINE_boolean('imagenet_pretrain', True, 'Using imagenet pretrained model to initialise.')
+tf.app.flags.DEFINE_boolean('imagenet_pretrain', True, 'Using imagenet pretrained model to initialise.') # 如果该项为True 就使用imagenet预训练模型初始化，_config_pretrain_model方法给checkpoint_path赋值
 tf.app.flags.DEFINE_boolean('ignore_missing_vars', False, 'When restoring a checkpoint would ignore missing variables.')
 
 ###############
@@ -173,13 +173,14 @@ def main(_):
             FLAGS.train_image_height, FLAGS.train_image_width = hd_data_h, hd_data_w
             print("set the image size to (%d, %d)" % (hd_data_h, hd_data_w))
 
-    config_and_print_log(FLAGS) # config and print log
+    config_and_print_log(FLAGS) # config and print log 在此方法中改变了 FLAGS.checkpoint_path
     tf.logging.set_verbosity(tf.logging.INFO) # 作用：将 TensorFlow 日志信息输出到屏幕
 
     """
     tf.Graph().as_default() 返回值：返回一个上下文管理器，这个上下管理器使用这个图作为默认的图
     通过tf.get_default_graph()函数可以获取当前默认的计算图。
     通过a.graph可以查看张量所属的计算图。
+    tsnsorflow session关闭问题：https://blog.csdn.net/clksjx/article/details/104407156
     """
     with tf.Graph().as_default(): 
         #######################
@@ -229,6 +230,7 @@ def main(_):
         first_clone_scope = deploy_config.clone_scope(0)
         # Gather update_ops from the first clone. These contain, for example,
         # the updates for the batch_norm variables created by network_fn.
+        # # 从一个集合中取出变量，返回的是一个列表
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, first_clone_scope)
 
         # Add summaries for end_points.
@@ -238,9 +240,9 @@ def main(_):
         # Tensor("softmax_cross_entropy_loss/value:0", shape=(), dtype=float32)
         # Tensor("softmax_cross_entropy_loss_1/value:0", shape=(), dtype=float32)
         # Tensor("entropy_loss/value:0", shape=(), dtype=float32)
-        # first_clone_scope 是空格字符串
+        # tf.get_collection() 主要作用：从一个集合中取出变量。https://blog.csdn.net/qq_43088815/article/details/89926074
         loss_dict = {}
-        for loss in tf.get_collection(tf.GraphKeys.LOSSES, first_clone_scope): # https://blog.csdn.net/qq_43088815/article/details/89926074
+        for loss in tf.get_collection(tf.GraphKeys.LOSSES, first_clone_scope): # first_clone_scope 是空格字符串
             if loss.name == 'softmax_cross_entropy_loss/value:0':
                 loss_dict['clf'] = loss
             elif 'softmax_cross_entropy_loss' in loss.name:
@@ -253,7 +255,7 @@ def main(_):
         #################################
         # Configure the moving averages # 使用滑动平均
         #################################
-        if FLAGS.moving_average_decay:
+        if FLAGS.moving_average_decay: # None
             moving_average_variables = slim.get_model_variables() 
             variable_averages = tf.train.ExponentialMovingAverage(
                 FLAGS.moving_average_decay, global_step)
@@ -267,8 +269,8 @@ def main(_):
             learning_rate = _configure_learning_rate(dataset.num_samples, global_step, FLAGS)
             optimizer = _configure_optimizer(learning_rate)
 
-        if FLAGS.sync_replicas:
-            # If sync_replicas is enabled, the averaging will be done in the chief
+        if FLAGS.sync_replicas: # False
+            # If sync_replicas is enabled, the averaging will be done in the chief. 如果启用了sync_replicas，则平均将在main中完成。
             # queue runner.
             optimizer = tf.train.SyncReplicasOptimizer(
                 opt=optimizer,
@@ -277,36 +279,59 @@ def main(_):
                 variables_to_average=moving_average_variables,
                 replica_id=tf.constant(FLAGS.task, tf.int32, shape=()),
                 total_num_replicas=FLAGS.worker_replicas)
-        elif FLAGS.moving_average_decay:
+        elif FLAGS.moving_average_decay: # None 使用滑动平均
             # Update ops executed locally by trainer.
             update_ops.append(variable_averages.apply(moving_average_variables))
 
         # Variables to train.
         variables_to_train = _get_variables_to_train()
 
+        """ 
+        minimize()就是compute_gradients()和apply_gradients()这两个方法的简单组合 
+        https://blog.csdn.net/Huang_Fj/article/details/102688509
+        """
+
+        ######################
+        # minimize start ... #
+        ######################
+
         #  and returns a train_tensor and summary_op
-        # total_loss is the sum of all LOSSES and REGULARIZATION_LOSSES in tf.GraphKeys
+        # total_loss is the sum of all LOSSES and REGULARIZATION_LOSSES in tf.GraphKeys 总损失
+        # compute_gradients()
         total_loss, clones_gradients = model_deploy.optimize_clones(
             clones,
             optimizer,
             var_list=variables_to_train)
+        # Create gradient updates. <tf.Operation 'Adam' type=AssignAdd>
+        grad_updates = optimizer.apply_gradients(clones_gradients, global_step=global_step)
 
-        # Create gradient updates.
-        grad_updates = optimizer.apply_gradients(clones_gradients,
-                                                 global_step=global_step)
-        update_ops.append(grad_updates)
-
-        update_op = tf.group(*update_ops)
-        train_tensor = control_flow_ops.with_dependencies([update_op], total_loss,
+        ######################
+        # minimize end ... #
+        ######################
+                                
+        update_ops.append(grad_updates) # 好多op
+        update_op = tf.group(*update_ops) # tf.group()将多个tensor或者op合在一起，然后进行run，返回的是一个op
+    
+        train_tensor = control_flow_ops.with_dependencies([update_op], total_loss, # ???
                                                           name='train_op')
-
+        
+        # 4个loss：loss、clf_loss、entropy_loss、sample_clf_1_loss 
         train_tensor_list = [train_tensor]
+        for loss_key in sorted(loss_dict.keys()): # len(loss_dict.keys()) = 3
+            train_tensor_list.append(loss_dict[loss_key]) 
+        """
+        [
+            <tf.Tensor 'train_op:0' shape=() dtype=float32>, 
+            <tf.Tensor 'softmax_cross_entropy_loss/value:0' shape=() dtype=float32>, 
+            <tf.Tensor 'entropy_loss/value:0' shape=() dtype=float32>, 
+            <tf.Tensor 'softmax_cross_entropy_loss_1/value:0' shape=() dtype=float32>
+        ]
+        """
+        
+        # 拼接字符串
         format_str = 'step %d, loss = %.2f'
-
         for loss_key in sorted(loss_dict.keys()):
-            train_tensor_list.append(loss_dict[loss_key])
             format_str += (', %s_loss = ' % loss_key + '%.8f')
-
         format_str += ' (%.1f examples/sec; %.3f sec/batch)'
 
         # Create a saver.
@@ -314,20 +339,20 @@ def main(_):
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
 
         ###########################
-        # Kicks off the training. # 开始训练
+        # Kicks off the training. # 开始训练 下面的代码是套路
         ###########################
         # Build an initialization operation to run below.
         init = tf.global_variables_initializer()
 
-        # Start running operations on the Graph. allow_soft_placement must be set to
-        # True to build towers on GPU, as some of the ops do not have GPU
+        # Start running operations on the Graph. allow_soft_placement must be set to True to build towers on GPU, as some of the ops do not have GPU
+        # tf.ConfigProto()主要的作用是配置tf.Session的运算方式，比如gpu运算或者cpu运算 https://blog.csdn.net/qq_31261509/article/details/79746114
         # implementations.
         sess = tf.Session(config=tf.ConfigProto(
-            allow_soft_placement=True,
-            log_device_placement=FLAGS.log_device_placement))
+            allow_soft_placement=True, # 这个选项设置成True，那么当运行设备不满足要求时，会自动分配GPU或者CPU。
+            log_device_placement=FLAGS.log_device_placement, # 设置为True时，会打印出TensorFlow使用了那种操作
+            ))
         sess.run(init)
-
-        # load pretrained weights
+        
         if FLAGS.checkpoint_path is not None:
             print("Load the pretrained weights")
             weight_ini_fn = _get_init_fn()
@@ -335,7 +360,8 @@ def main(_):
         else:
             print("Train from the scratch")
 
-        # Start the queue runners.
+        # Start the queue runners. ？？？
+        # QueueRunner类用来启动tensor的入队线程，可以用来启动多个工作线程同时将多个tensor（训练数据）推送入文件名称队列中，
         tf.train.start_queue_runners(sess=sess)
 
         # for step in xrange(FLAGS.max_number_of_steps):
@@ -346,17 +372,13 @@ def main(_):
 
             duration = time.time() - start_time
 
-            # assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
-
             if step % FLAGS.log_every_n_steps == 0:
-                # num_examples_per_step = FLAGS.batch_size * FLAGS.num_gpus
-                num_examples_per_step = FLAGS.batch_size # batc_size = 
+                num_examples_per_step = FLAGS.batch_size
                 examples_per_sec = num_examples_per_step / duration
-                # sec_per_batch = duration / FLAGS.num_gpus
                 sec_per_batch = duration
-
                 print(format_str % tuple([step] + loss_value_list + [examples_per_sec, sec_per_batch]))
-
+                # 拼接字符串示例： step 0, loss = 8.97, clf_loss = 7.41703176, entropy_loss = 0.00226558, sample_clf_1_loss = 0.98358572 (0.9 examples/sec; 35.449 sec/batch)
+            
             # Save the model checkpoint periodically.
             # if step % FLAGS.model_snapshot_steps == 0 or (step + 1) == FLAGS.max_number_of_steps:
             if step % FLAGS.model_snapshot_steps == 0:

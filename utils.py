@@ -231,6 +231,7 @@ def _get_init_fn():
 
     print('Fine-tuning from %s' % checkpoint_path)
 
+    # 实现迁移学习 https://www.jianshu.com/p/66d0afa6260c?utm_campaign=maleskine&amp%3Butm_content=note&amp%3Butm_medium=seo_notes&amp%3Butm_source=recommendation
     return slim.assign_from_checkpoint_fn(
         checkpoint_path,
         variables_to_restore,
@@ -248,6 +249,7 @@ def _get_variables_to_train():
         return tf.trainable_variables()
     else:
         scopes = [scope.strip() for scope in FLAGS.trainable_scopes.split(',')]
+        #  strip() 方法用于移除字符串头尾指定的字符（默认为空格或换行符）或字符序列。
 
     variables_to_train = []
     for scope in scopes:
