@@ -27,7 +27,7 @@ from utils import config_and_print_log, _configure_learning_rate, _configure_opt
 # FLags may be usually changed # 模型 resnet_v1_50
 ##############
 
-tf.app.flags.DEFINE_string('model_name', 'resnet_v1_50', 'The name of the architecture to train.')
+tf.app.flags.DEFINE_string('model_name', 'resnet_v1_50', 'The name of the architecture to train. resnet_v1_50, resnet_v1_distributions_50, resnet_v1_distributions_baseline_50')
 
 tf.app.flags.DEFINE_integer('max_number_of_steps', 5, 'The maximum number of training steps.') # 60200
 tf.app.flags.DEFINE_string('target', 'market', 'For name of model')

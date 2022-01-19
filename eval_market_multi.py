@@ -75,7 +75,7 @@ tf.app.flags.DEFINE_boolean('hd_data', False, 'using high resolution image data 
 tf.app.flags.DEFINE_integer('labels_offset', 0, 'An offset for the labels in the dataset. This flag is primarily used '
                                                 'to evaluate the VGG and ResNet architectures which do not use a '
                                                 'background class for the ImageNet dataset.')
-tf.app.flags.DEFINE_string('model_name', model, 'The name of the architecture to evaluate.')
+tf.app.flags.DEFINE_string('model_name', model, 'The name of the architecture to evaluate. resnet_v1_50, resnet_v1_distributions_50, resnet_v1_distributions_baseline_50')
 tf.app.flags.DEFINE_string('model_scope', '', 'The name scope of given model.')
 # tf.app.flags.DEFINE_string('feat_layer', 'layer_19', 'The name of the feature layer.')
 tf.app.flags.DEFINE_string('preprocessing_name', None, 'The name of the preprocessing to use. If left as `None`, then '

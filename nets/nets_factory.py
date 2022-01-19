@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,17 +59,19 @@ def get_network_fn(name, num_classes, weight_decay=0.0, is_training=False, sampl
   if name not in networks_map:
     raise ValueError('Name of network unknown %s' % name)
 
-  if name in arg_scopes_map:
-      arg_scope = arg_scopes_map[name](weight_decay=weight_decay)
-  else:
+  if name not in arg_scopes_map:
       raise ValueError('Name of network unknown %s' % name)
 
   func = networks_map[name]
-  @functools.wraps(func)
+  arg_scope = arg_scopes_map[name](weight_decay=weight_decay)
+
+  # 写一个decorator的时候，最好在实现之前加上functools的wrap，它能保留原有函数的名称和函数属性
+  # https://blog.csdn.net/liuzonghao88/article/details/103586634
+  @functools.wraps(func) # ？？？
   def network_fn1(images):
     with slim.arg_scope(arg_scope):
       return func(images, num_classes, is_training=is_training, sample_number=sample_number)
-  if hasattr(func, 'default_image_size'):
+  if hasattr(func, 'default_image_size'): # hasattr()函数用于判断对象是否包含对应的属性
     network_fn1.default_image_size = func.default_image_size
   def network_fn2(images, refs):
     with slim.arg_scope(arg_scope):

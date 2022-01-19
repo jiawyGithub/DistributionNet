@@ -93,26 +93,41 @@ def config_eval_ckpt_path(FLAGS, flag=1):
 
 def _config_pretrain_model(FLAGS, is_train=True):
     pretrian_dir = './pretrained_model'
-    # pretrained_model = {'resnet':'resnet_v1_50.ckpt', 'inceptionv1':'inception_v1.ckpt', 'mobilenet':'mobile_net.ckpt'}
-    pretrained_model = {'resnet_v1_50':'resnet_v1_50.ckpt', 'resnet_v2':'resnet_v2_50.ckpt', 'resnet_v1_distributions_50':'resnet_v1_50.ckpt', 'resnet_v1_distributions_baseline_50':'resnet_v1_50.ckpt',}
-    model_scopes = {'resnet_v1_50': 'resnet_v1_50', 'resnet_v2': 'resnet_v2_50', 'resnet_v1_distributions_50': 'resnet_v1_50', 'resnet_v1_distributions_baseline_50': 'resnet_v1_50'}
-    checkpoint_exclude_scopes = {'resnet_v1': ['logits', 'concat_comb', 'fusion'], 'resnet_v1_distributions_50': [], 'resnet_v1_distributions_baseline_50': [],}
+    pretrained_model = {
+        'resnet_v1_50':'resnet_v1_50.ckpt', 
+        'resnet_v2':'resnet_v2_50.ckpt', # ？？？
+        'resnet_v1_distributions_50':'resnet_v1_50.ckpt', 
+        'resnet_v1_distributions_baseline_50':'resnet_v1_50.ckpt',
+    }
+    model_scopes = {
+        'resnet_v1_50': 'resnet_v1_50', 
+        'resnet_v2': 'resnet_v2_50',  # ？？？
+        'resnet_v1_distributions_50': 'resnet_v1_50', 
+        'resnet_v1_distributions_baseline_50': 'resnet_v1_50'
+    }
+    checkpoint_exclude_scopes = {
+        'resnet_v1': ['logits', 'concat_comb', 'fusion'], 
+        'resnet_v1_distributions_50': [], 
+        'resnet_v1_distributions_baseline_50': [],
+    }
     shared_checkpoint_exclude_scopes = ['verifier']
-    for model_key in pretrained_model.keys():
-        if model_key == FLAGS.model_name:
-            if FLAGS.imagenet_pretrain and is_train:
-                FLAGS.checkpoint_path = os.path.join(pretrian_dir, pretrained_model[model_key])
-            if len(FLAGS.sub_dir) == 0:
-                FLAGS.sub_dir = model_key
-                print("Set sub_dir to %s" % model_key)
-            if len(FLAGS.model_scope) == 0:
-                FLAGS.model_scope = model_scopes[model_key]
-                print("Set model scope to %s" % model_scopes[model_key])
-            if len(FLAGS.checkpoint_exclude_scopes) == 0 and is_train:
-                FLAGS.checkpoint_exclude_scopes = checkpoint_exclude_scopes[model_key]
-                FLAGS.checkpoint_exclude_scopes.extend(shared_checkpoint_exclude_scopes)
-                print("Set checkpoint exclude scopes to :", checkpoint_exclude_scopes[model_key])
 
+    model_key = FLAGS.model_name
+    if model_key in pretrained_model.keys():
+        if FLAGS.imagenet_pretrain and is_train:
+            FLAGS.checkpoint_path = os.path.join(pretrian_dir, pretrained_model[model_key])
+        if len(FLAGS.sub_dir) == 0:
+            FLAGS.sub_dir = model_key
+            print("Set sub_dir to %s" % model_key)
+        if len(FLAGS.model_scope) == 0:
+            FLAGS.model_scope = model_scopes[model_key]
+            print("Set model scope to %s" % model_scopes[model_key])
+        if len(FLAGS.checkpoint_exclude_scopes) == 0 and is_train:
+            FLAGS.checkpoint_exclude_scopes = checkpoint_exclude_scopes[model_key]
+            FLAGS.checkpoint_exclude_scopes.extend(shared_checkpoint_exclude_scopes)
+            print("Set checkpoint exclude scopes to :", checkpoint_exclude_scopes[model_key])
+    else:
+        ValueError('wrong model_name.')
 
 def _configure_learning_rate(num_samples_per_epoch, global_step, FLAGS):
     """Configures the learning rate.
@@ -312,7 +327,7 @@ def build_graph(tf_batch_queue, network_fn):
 
     images, labels = tf_batch_queue[:2]
 
-    if 'distribution' in FLAGS.model_name and 'baseline' not in FLAGS.model_name:
+    if 'distribution' in FLAGS.model_name and 'baseline' not in FLAGS.model_name: # distributionNet
         logits, logits2, end_points = network_fn(images)
     else:
         logits, end_points = network_fn(images)

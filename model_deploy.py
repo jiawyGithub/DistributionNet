@@ -118,7 +118,8 @@ __all__ = ['create_clones',
           ]
 
 
-# Namedtuple used to represent a clone during deployment.
+# Namedtuple used to represent a clone during deployment. 命名元组，用于在部署期间表示克隆。
+# https://blog.csdn.net/june_young_fan/article/details/91359194
 Clone = collections.namedtuple('Clone',
                                ['outputs',  # Whatever model_fn() returned.
                                 'scope',  # The scope used to create it.

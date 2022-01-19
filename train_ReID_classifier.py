@@ -1,5 +1,5 @@
 # coding=utf-8
-# this is a modification based on the train_image_classifier.py
+# this is a modification based on the train_image_classifier.py ？？？
 # ==============================================================================
 """Generic training script that trains a ReID model using a given dataset."""
 
@@ -10,31 +10,25 @@
 # The optional losses include entropy loss and two versions of across instance losses
 ########################################
 
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import # 加入绝对引入这个新特性 https://blog.csdn.net/caiqiiqi/article/details/51050800
+from __future__ import division # 导入精确除法“/”，若要执行截断除法，可以使用"//"操作符：
+# from __future__ import print_function # 加上该句 在python2中 print 不需要加括号
 
 import tensorflow as tf
-
 import os
 import time
-
 from tensorflow.python.ops import control_flow_ops
+import tensorflow.contrib.slim as slim # https://bigquant.com/community/t/topic/113050
 import dataset_factory
 import model_deploy
 from nets import nets_factory
-
-import tensorflow.contrib.slim as slim
-
 from utils import config_and_print_log, _configure_learning_rate, _configure_optimizer, _get_variables_to_train, _get_init_fn, get_img_func, build_graph, get_pair_type
-
 
 ##############
 # FLags may be usually changed #
 ##############
 
-tf.app.flags.DEFINE_string('model_name', 'resnet_v1_distributions_50', 'The name of the architecture to train.')
+tf.app.flags.DEFINE_string('model_name', 'resnet_v1_distributions_50', 'The name of the architecture to train. resnet_v1_50, resnet_v1_distributions_50, resnet_v1_distributions_baseline_50')
 
 tf.app.flags.DEFINE_boolean('entropy_loss', False, 'uncertainty loss')
 tf.app.flags.DEFINE_integer('max_number_of_steps', 3, 'The maximum number of training steps.') # 60200
@@ -60,7 +54,6 @@ tf.app.flags.DEFINE_string('dataset_dir', './Market/',
 tf.app.flags.DEFINE_string('checkpoint_path2', '/import/vision-ephemeral/ty303/result/resnet_v1_50_emdNone_targetmarket_standard',
                            'The path to a checkpoint from which to fine-tune.')
 
-
 tf.app.flags.DEFINE_float('learning_rate', 0.00005, 'Initial learning rate.')
 tf.app.flags.DEFINE_float('end_learning_rate', 0.00001, 'The minimal end learning rate used by a polynomial decay learning rate.')
 # 逗号分隔的作用域列表，用于筛选要训练的变量集。默认情况下，None将训练所有变量。
@@ -72,23 +65,22 @@ tf.app.flags.DEFINE_string('checkpoint_exclude_scopes', ['Distributions'], 'Comm
 #####################
 ###The following flags are fixed all the time
 #####################
-
 tf.app.flags.DEFINE_boolean('use_clf', True, 'Add classification (identification) loss to the network.')
 tf.app.flags.DEFINE_string('master', '', 'The address of the TensorFlow master to use.')
 tf.app.flags.DEFINE_string('train_dir', './result',
                            'Directory where checkpoints and event logs are written to.') #写入检查点和事件日志的目录。
 tf.app.flags.DEFINE_string('sub_dir', '', 'Subdirectory to identify the sv dir') #子目录以识别sv目录
+tf.app.flags.DEFINE_integer('log_every_n_steps', 1, 'The frequency with which logs are print.') # 100
+# CPU和GPU部署配置
 tf.app.flags.DEFINE_integer('num_clones', 1, 'Number of model clones to deploy.')
 tf.app.flags.DEFINE_boolean('clone_on_cpu', False, 'Use CPUs to deploy clones.')
-tf.app.flags.DEFINE_integer('worker_replicas', 1, 'Number of worker replicas.') #工作副本的数量
+tf.app.flags.DEFINE_integer('worker_replicas', 1, 'Number of worker replicas.')
 tf.app.flags.DEFINE_integer('num_ps_tasks', 0, 'The number of parameter servers. If the value is 0, then the '
                                                'parameters are handled locally by the worker.')
+tf.app.flags.DEFINE_integer('task', 0, 'Task id of the replica running the training.')
 
-# readers number
 tf.app.flags.DEFINE_integer('num_readers', 4, 'The number of parallel readers that read data from the dataset.')
 tf.app.flags.DEFINE_integer('num_preprocessing_threads', 4, 'The number of threads used to create the batches.')
-tf.app.flags.DEFINE_integer('log_every_n_steps', 1, 'The frequency with which logs are print.') # 100
-tf.app.flags.DEFINE_integer('task', 0, 'Task id of the replica running the training.')
 
 ######################
 # Optimization Flags #
@@ -142,7 +134,7 @@ tf.app.flags.DEFINE_integer('summary_snapshot_steps', 20000, 'Summary save steps
 tf.app.flags.DEFINE_integer('model_snapshot_steps', 10000, 'Model save steps.')
 
 #####################
-# Fine-Tuning Flags #
+# Fine-Tuning Flags # 微调参数
 #####################
 
 tf.app.flags.DEFINE_string('checkpoint_path', None, 'The path to a checkpoint from which to fine-tune.')
@@ -162,44 +154,51 @@ FLAGS = tf.app.flags.FLAGS
 
 def main(_):
 
+    # 检查存放result的目录是否存在
     if not os.path.isdir(FLAGS.train_dir):
         os.makedirs(FLAGS.train_dir)
-
+    # 检查数据集是否存在
     if not FLAGS.dataset_dir:
         raise ValueError('You must supply the dataset directory with --dataset_dir')
-
+    # ？？？好像必须得是3
     if not FLAGS.aug_mode:
         raise ValueError('aug_mode need to be speficied.')
 
     if (not FLAGS.train_image_height) or (not FLAGS.train_image_width):
         raise ValueError('The image height and width must be define explicitly.')
+    if FLAGS.hd_data: # 如果使用高分辨率图像就重置图片的width和height
+        hd_data_h = 400
+        hd_data_w = 200
+        if FLAGS.train_image_height != hd_data_h or FLAGS.train_image_width != hd_data_w:
+            FLAGS.train_image_height, FLAGS.train_image_width = hd_data_h, hd_data_w
+            print("set the image size to (%d, %d)" % (hd_data_h, hd_data_w))
 
-    if FLAGS.hd_data:
-        if FLAGS.train_image_height != 400 or FLAGS.train_image_width != 200:
-            FLAGS.train_image_height, FLAGS.train_image_width = 400, 200
-            print("set the image size to (%d, %d)" % (400, 200))
+    config_and_print_log(FLAGS) # config and print log
+    tf.logging.set_verbosity(tf.logging.INFO) # 作用：将 TensorFlow 日志信息输出到屏幕
 
-    # config and print log
-    config_and_print_log(FLAGS)
-
-    tf.logging.set_verbosity(tf.logging.INFO)
-    with tf.Graph().as_default():
+    """
+    tf.Graph().as_default() 返回值：返回一个上下文管理器，这个上下管理器使用这个图作为默认的图
+    通过tf.get_default_graph()函数可以获取当前默认的计算图。
+    通过a.graph可以查看张量所属的计算图。
+    """
+    with tf.Graph().as_default(): 
         #######################
-        # Config model_deploy #
+        # Config model_deploy # 使用DeploymentConfig部署多个机器和GPU训练
         #######################
         deploy_config = model_deploy.DeploymentConfig(
-            num_clones=FLAGS.num_clones,
-            clone_on_cpu=FLAGS.clone_on_cpu,
-            replica_id=FLAGS.task,
-            num_replicas=FLAGS.worker_replicas,
-            num_ps_tasks=FLAGS.num_ps_tasks)
+            num_clones=FLAGS.num_clones, # 每个机器中要部署的模型网络的数量。
+            clone_on_cpu=FLAGS.clone_on_cpu, # 如果将模型放置在CPU上，则为true。
+            replica_id=FLAGS.task, # 为其部署模型的机器的索引。 主要机器通常为0。
+            num_replicas=FLAGS.worker_replicas, # 要使用的机器数。
+            num_ps_tasks=FLAGS.num_ps_tasks # “ps”作业的任务数。 0不使用副本。
+        )
 
-        # Create global_step
-        with tf.device(deploy_config.variables_device()):
+        # Create global_step ？？？
+        with tf.device(deploy_config.variables_device()): # tf.device 指定tensorflow运行的GPU或CPU设备
             global_step = slim.create_global_step()
 
         #####################################
-        # Select the preprocessing function #
+        # Select the preprocessing function # ？？？
         #####################################
         img_func = get_img_func()
 
@@ -236,8 +235,12 @@ def main(_):
         end_points = clones[0].outputs
 
         # Add summaries for losses.
+        # Tensor("softmax_cross_entropy_loss/value:0", shape=(), dtype=float32)
+        # Tensor("softmax_cross_entropy_loss_1/value:0", shape=(), dtype=float32)
+        # Tensor("entropy_loss/value:0", shape=(), dtype=float32)
+        # first_clone_scope 是空格字符串
         loss_dict = {}
-        for loss in tf.get_collection(tf.GraphKeys.LOSSES, first_clone_scope):
+        for loss in tf.get_collection(tf.GraphKeys.LOSSES, first_clone_scope): # https://blog.csdn.net/qq_43088815/article/details/89926074
             if loss.name == 'softmax_cross_entropy_loss/value:0':
                 loss_dict['clf'] = loss
             elif 'softmax_cross_entropy_loss' in loss.name:
@@ -248,10 +251,10 @@ def main(_):
                 raise Exception('Loss type error')
 
         #################################
-        # Configure the moving averages #
+        # Configure the moving averages # 使用滑动平均
         #################################
         if FLAGS.moving_average_decay:
-            moving_average_variables = slim.get_model_variables()
+            moving_average_variables = slim.get_model_variables() 
             variable_averages = tf.train.ExponentialMovingAverage(
                 FLAGS.moving_average_decay, global_step)
         else:
@@ -311,7 +314,7 @@ def main(_):
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
 
         ###########################
-        # Kicks off the training. #
+        # Kicks off the training. # 开始训练
         ###########################
         # Build an initialization operation to run below.
         init = tf.global_variables_initializer()
