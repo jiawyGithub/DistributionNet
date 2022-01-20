@@ -36,9 +36,8 @@ tf.app.flags.DEFINE_boolean('entropy_loss', False, 'uncertainty loss')
 tf.app.flags.DEFINE_string('set', 'bounding_box_train', "subset under current dataset")
 tf.app.flags.DEFINE_integer('boot_weight', 1.0, 'cross entropy loss weight')
 
-#
 tf.app.flags.DEFINE_float('sampled_ce_loss_weight', None, 'loss weight for xent of drawn samples.')
-# ？？？为什么采样就采一个
+
 tf.app.flags.DEFINE_integer('sample_number', None, 'the number of samples drawn from distribution.')
 
 tf.app.flags.DEFINE_boolean('resume_train', False, 'when set to true, resume training from current train dir or load dir.')
@@ -172,8 +171,8 @@ def main(_):
 
     # config and print log
     config_and_print_log(FLAGS)
-
     tf.logging.set_verbosity(tf.logging.INFO)
+
     with tf.Graph().as_default():
         #######################
         # Config model_deploy #
@@ -216,7 +215,7 @@ def main(_):
         def clone_fn(tf_batch_queue):
             return build_graph(tf_batch_queue, network_fn)
 
-        # Gather initial summaries.
+        # Gather initial summaries. set([])
         summaries = set(tf.get_collection(tf.GraphKeys.SUMMARIES))
 
         clones = model_deploy.create_clones(deploy_config, clone_fn, [dataset.tf_batch_queue])
@@ -245,12 +244,13 @@ def main(_):
                 loss_dict['entropy'] = loss
             else:
                 raise Exception('Loss type error')
-
+        # summaries set([<tf.Tensor 'losses/softmax_cross_entropy_loss/value:0' shape=() dtype=string>])
+        # loss_dict = {'entropy': <tf.Tensor 'softmax_cross_entropy_loss/value:0' shape=() dtype=float32>}
 
         #################################
         # Configure the moving averages #
         #################################
-        if FLAGS.moving_average_decay:
+        if FLAGS.moving_average_decay: # Nome
             moving_average_variables = slim.get_model_variables()
             variable_averages = tf.train.ExponentialMovingAverage(
                 FLAGS.moving_average_decay, global_step)
@@ -264,8 +264,9 @@ def main(_):
             learning_rate = _configure_learning_rate(dataset.num_samples, global_step, FLAGS)
             optimizer = _configure_optimizer(learning_rate)
             summaries.add(tf.summary.scalar('learning_rate', learning_rate))
-
-        if FLAGS.sync_replicas:
+        # summaries = set([<tf.Tensor 'losses/softmax_cross_entropy_loss/value:0' shape=() dtype=string>, <tf.Tensor 'learning_rate:0' shape=() dtype=string>])
+        
+        if FLAGS.sync_replicas: # False
             # If sync_replicas is enabled, the averaging will be done in the chief
             # queue runner.
             optimizer = tf.train.SyncReplicasOptimizer(
@@ -275,7 +276,7 @@ def main(_):
                 variables_to_average=moving_average_variables,
                 replica_id=tf.constant(FLAGS.task, tf.int32, shape=()),
                 total_num_replicas=FLAGS.worker_replicas)
-        elif FLAGS.moving_average_decay:
+        elif FLAGS.moving_average_decay: # None
             # Update ops executed locally by trainer.
             update_ops.append(variable_averages.apply(moving_average_variables))
 
@@ -290,13 +291,14 @@ def main(_):
             var_list=variables_to_train)
         # Add total_loss to summary.
         summaries.add(tf.summary.scalar('total_loss', total_loss))
-
+        # summaries = set([<tf.Tensor 'losses/softmax_cross_entropy_loss/value:0' shape=() dtype=string>, <tf.Tensor 'learning_rate:0' shape=() dtype=string>, <tf.Tensor 'total_loss_1:0' shape=() dtype=string>])
+        
         # Create gradient updates.
         grad_updates = optimizer.apply_gradients(clones_gradients,
                                                  global_step=global_step)
         update_ops.append(grad_updates)
-
         update_op = tf.group(*update_ops)
+        
         train_tensor = control_flow_ops.with_dependencies([update_op], total_loss,
                                                           name='train_op')
 
@@ -338,7 +340,6 @@ def main(_):
         # Start the queue runners.
         tf.train.start_queue_runners(sess=sess)
 
-
         # for step in xrange(FLAGS.max_number_of_steps):
         for step in xrange(FLAGS.max_number_of_steps + 1):
             start_time = time.time()
@@ -351,7 +352,6 @@ def main(_):
                 num_examples_per_step = FLAGS.batch_size
                 examples_per_sec = num_examples_per_step / duration
                 sec_per_batch = duration
-
                 print(format_str % tuple([step] + loss_value_list + [examples_per_sec, sec_per_batch]))
 
             if step % FLAGS.model_snapshot_steps == 0:

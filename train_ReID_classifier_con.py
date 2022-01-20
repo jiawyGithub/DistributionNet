@@ -252,7 +252,7 @@ def main(_):
             learning_rate = _configure_learning_rate(dataset.num_samples, global_step, FLAGS)
             optimizer = _configure_optimizer(learning_rate)
 
-        if FLAGS.sync_replicas:
+        if FLAGS.sync_replicas: # False
             # If sync_replicas is enabled, the averaging will be done in the chief
             # queue runner.
             optimizer = tf.train.SyncReplicasOptimizer(
@@ -262,7 +262,7 @@ def main(_):
                 variables_to_average=moving_average_variables,
                 replica_id=tf.constant(FLAGS.task, tf.int32, shape=()),
                 total_num_replicas=FLAGS.worker_replicas)
-        elif FLAGS.moving_average_decay:
+        elif FLAGS.moving_average_decay: # None
             # Update ops executed locally by trainer.
             update_ops.append(variable_averages.apply(moving_average_variables))
 
@@ -280,19 +280,23 @@ def main(_):
         grad_updates = optimizer.apply_gradients(clones_gradients,
                                                  global_step=global_step)
         update_ops.append(grad_updates)
-
         update_op = tf.group(*update_ops)
+
         train_tensor = control_flow_ops.with_dependencies([update_op], total_loss,
                                                           name='train_op')
 
         train_tensor_list = [train_tensor]
         format_str = 'step %d, loss = %.2f'
-
         for loss_key in sorted(loss_dict.keys()):
             train_tensor_list.append(loss_dict[loss_key])
             format_str += (', %s_loss = ' % loss_key + '%.8f')
-
         format_str += ' (%.1f examples/sec; %.3f sec/batch)'
+        """
+        [
+            <tf.Tensor 'train_op:0' shape=() dtype=float32>, 
+            <tf.Tensor 'softmax_cross_entropy_loss/value:0' shape=() dtype=float32>
+        ]
+        """
 
         # Create a saver.
         saver = tf.train.Saver(tf.global_variables(),max_to_keep=1)
@@ -326,6 +330,7 @@ def main(_):
         # for step in xrange(FLAGS.max_number_of_steps):
         for step in xrange(FLAGS.max_number_of_steps + 1):
             start_time = time.time()
+
             loss_value_list = sess.run(train_tensor_list, feed_dict=dataset.get_feed_dict())
 
             duration = time.time() - start_time
@@ -334,7 +339,6 @@ def main(_):
                 num_examples_per_step = FLAGS.batch_size
                 examples_per_sec = num_examples_per_step / duration
                 sec_per_batch = duration
-
                 print(format_str % tuple([step] + loss_value_list + [examples_per_sec, sec_per_batch]))
 
             # Save the model checkpoint periodically.
@@ -343,7 +347,6 @@ def main(_):
                 saver.save(sess, checkpoint_path, global_step=step)
 
         print('OK...')
-
 
 if __name__ == '__main__':
     tf.app.run()

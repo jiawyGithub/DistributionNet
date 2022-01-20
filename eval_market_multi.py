@@ -288,15 +288,13 @@ def main(_):
     folder_path = './result'
     files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if 'distri' in f]# and (len(os.listdir(folder_path+'/'+f)) == 4)]# or len(os.listdir(folder_path+'/'+f)) == 7)]
 
-
     for file in files:
 
         FLAGS.sub_dir = file
-
         FLAGS.dataset_dir = './Market/'
         FLAGS.dataset_name = 'Market'
 
-        # sub_sets = ['bounding_box_test', 'query']
+        # sub_sets = ['bounding_box_test', 'query'] # 找不到bounding_box_test？？？？
         sub_sets = ['query']
 
         #FLAGS.eval_dir += FLAGS.eval_dir + '/' + FLAGS.sub_dir + '_eval'
@@ -353,8 +351,6 @@ def main(_):
             json.dump(dict, f)
 
 
-
-
 def eval_market(distmat, q_label, g_label, q_camera, g_camera, q_name, g_name, max_rank=20):
     num_q, num_g = distmat.shape
     indices = np.argsort(distmat,axis=1)
@@ -404,7 +400,6 @@ def eval_market(distmat, q_label, g_label, q_camera, g_camera, q_name, g_name, m
     mAP = np.mean(all_AP)
 
     return all_cmc, mAP
-
 
 
 def extract_features():
