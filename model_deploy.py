@@ -15,18 +15,18 @@
 # ==============================================================================
 """Deploy Slim models across multiple clones and replicas.
 
-# TODO(sguada) docstring paragraph by (a) motivating the need for the file and
-# (b) defining clones.
+TODO(sguada) docstring paragraph by (a) motivating the need for the file and
+(b) defining clones.
 
-# TODO(sguada) describe the high-level components of model deployment.
-# E.g. "each model deployment is composed of several parts: a DeploymentConfig,
-# which captures A, B and C, an input_fn which loads data.. etc
+TODO(sguada) describe the high-level components of model deployment.
+E.g. "each model deployment is composed of several parts: a DeploymentConfig,
+which captures A, B and C, an input_fn which loads data.. etc
 
 To easily train a model on multiple GPUs or across multiple machines this
 module provides a set of helper functions: `create_clones`,
 `optimize_clones` and `deploy`.
 
-Usage:
+Usage: 代码架构示例
 
   g = tf.Graph()
 
@@ -93,7 +93,6 @@ TODO(sguada):
   - write a tutorial on how to use this.
   - analyze the possibility of calling deploy more than once.
 
-
 """
 
 from __future__ import absolute_import
@@ -116,7 +115,6 @@ __all__ = ['create_clones',
            'DeploymentConfig',
            'Clone',
           ]
-
 
 # Namedtuple used to represent a clone during deployment. 命名元组，用于在部署期间表示克隆。
 # https://blog.csdn.net/june_young_fan/article/details/91359194
@@ -143,7 +141,6 @@ _deployment_params = {'num_clones': 1,
                       'worker_job_name': 'worker',
                       'ps_job_name': 'ps'}
 
-# ？？？ 为什么创建副本？
 def create_clones(config, model_fn, args=None, kwargs=None):
   """Creates multiple clones according to config using a `model_fn`.
 
@@ -198,7 +195,7 @@ def create_clones(config, model_fn, args=None, kwargs=None):
           clones.append(Clone(outputs, clone_scope, clone_device))
   return clones
 
-# 加和所有损失 返回普通的总损失？？
+# 加和所有损失
 def _gather_clone_loss(clone, num_clones, regularization_losses):
   """Gather the loss for a single clone.
 
@@ -219,12 +216,21 @@ def _gather_clone_loss(clone, num_clones, regularization_losses):
   with tf.device(clone.device):
     all_losses = []
     clone_losses = tf.get_collection(tf.GraphKeys.LOSSES, clone.scope)
+    """
+    DistributionNet: 从哪来的？？？？
+    clone_losses = [
+      <tf.Tensor 'softmax_cross_entropy_loss/value:0' shape=() dtype=float32>, 
+      <tf.Tensor 'softmax_cross_entropy_loss_1/value:0' shape=() dtype=float32>, 
+      <tf.Tensor 'entropy_loss/value:0' shape=() dtype=float32>
+    ]
+    """
     if clone_losses:
       clone_loss = tf.add_n(clone_losses, name='clone_loss')
       if num_clones > 1:
         clone_loss = tf.div(clone_loss, 1.0 * num_clones, #除法操作
                             name='scaled_clone_loss')
       all_losses.append(clone_loss)
+    # 各个层的正则化损失？
     if regularization_losses: 
       regularization_loss = tf.add_n(regularization_losses,
                                      name='regularization_loss')
@@ -319,7 +325,7 @@ def optimize_clones(clones, optimizer,
   grads_and_vars = _sum_clones_gradients(grads_and_vars)
   return total_loss, grads_and_vars
 
-
+# 好像没用到该方法
 def deploy(config,
            model_fn,
            args=None,
@@ -359,7 +365,7 @@ def deploy(config,
   # Gather initial summaries.
   summaries = set(tf.get_collection(tf.GraphKeys.SUMMARIES))
 
-  # Create Clones.？？？？？？？
+  # Create Clones.
   clones = create_clones(config, model_fn, args, kwargs)
   first_clone = clones[0]
 
@@ -544,7 +550,7 @@ class DeploymentConfig(object):
     self._ps_device = '/job:' + ps_job_name if num_ps_tasks > 0 else ''
     self._worker_device = '/job:' + worker_job_name if num_ps_tasks > 0 else ''
 
-  @property
+  @property # @property装饰器来创建只读属性
   def num_clones(self):
     return self._num_clones
 

@@ -263,10 +263,10 @@ def main(_):
             moving_average_variables, variable_averages = None, None
 
         #########################################
-        # Configure the optimization procedure. #
+        # Configure the optimization procedure. # 优化器
         #########################################
         with tf.device(deploy_config.optimizer_device()):
-            learning_rate = _configure_learning_rate(dataset.num_samples, global_step, FLAGS)
+            learning_rate = _configure_learning_rate(dataset.num_samples, global_step, FLAGS) # 对学习率learning_rate应用指数衰减。
             optimizer = _configure_optimizer(learning_rate)
 
         if FLAGS.sync_replicas: # False

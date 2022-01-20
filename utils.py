@@ -90,7 +90,7 @@ def config_eval_ckpt_path(FLAGS, flag=1):
     full_ckpt_path = FLAGS.sub_dir
     return full_ckpt_path
 
-
+# 给FLAGS.checkpoint_path赋值
 def _config_pretrain_model(FLAGS, is_train=True):
     pretrian_dir = './pretrained_model'
     pretrained_model = {
@@ -128,7 +128,7 @@ def _config_pretrain_model(FLAGS, is_train=True):
             print("Set checkpoint exclude scopes to :", checkpoint_exclude_scopes[model_key])
     else:
         ValueError('wrong model_name.')
-
+# 返回学习率
 def _configure_learning_rate(num_samples_per_epoch, global_step, FLAGS):
     """Configures the learning rate.
 
@@ -144,10 +144,15 @@ def _configure_learning_rate(num_samples_per_epoch, global_step, FLAGS):
     """
     decay_steps = int(num_samples_per_epoch / FLAGS.batch_size *
                       FLAGS.num_epochs_per_decay)
+    """
+    DistributionNet:
+    FLAGS: sync_replicas = False
+    FLAGS.learning_rate_decay_type== 'exponential'
+    """
     if FLAGS.sync_replicas:
         decay_steps /= FLAGS.replicas_to_aggregate
-
     if FLAGS.learning_rate_decay_type == 'exponential':
+        # 对学习率learning_rate应用指数衰减。
         return tf.train.exponential_decay(FLAGS.learning_rate,
                                           global_step,
                                           decay_steps,
@@ -157,8 +162,7 @@ def _configure_learning_rate(num_samples_per_epoch, global_step, FLAGS):
     else:
         raise ValueError('learning_rate_decay_type [%s] was not recognized',
                          FLAGS.learning_rate_decay_type)
-
-
+# 返回优化器
 def _configure_optimizer(learning_rate):
     """Configures the optimizer used for training.
 
@@ -181,8 +185,7 @@ def _configure_optimizer(learning_rate):
     else:
         raise ValueError('Optimizer [%s] was not recognized', FLAGS.optimizer)
     return optimizer
-
-
+# 为了实现迁移学习
 def _get_init_fn():
     """Returns a function run by the chief worker to warm-start the training.
 
@@ -237,7 +240,6 @@ def _get_init_fn():
         variables_to_restore,
         ignore_missing_vars=FLAGS.ignore_missing_vars)
 
-
 def _get_variables_to_train():
     """Returns a list of variables to train.
 
@@ -256,7 +258,6 @@ def _get_variables_to_train():
         variables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope)
         variables_to_train.extend(variables)  #在列表末尾一次性追加另一个序列中的多个值
     return variables_to_train
-
 
 def print_log(log_prefix, FLAGS):
     # print header
@@ -289,7 +290,6 @@ def print_log(log_prefix, FLAGS):
             print("attr name, ", attr.upper())
             print("attr value, ", getattr(FLAGS, attr))
 
-
 def get_img_func(is_training=True):
     from ReID_preprocessing import preprocessing_factory
     preprocessing_name = FLAGS.preprocessing_name or FLAGS.model_name
@@ -306,10 +306,10 @@ def get_img_func(is_training=True):
 
     return callback
 
-# 正则项
+# 计算正则项损失
 def loss_entropy(
     mu, sig, weights=0.001, label_smoothing=0, scope=None,
-    loss_collection=ops.GraphKeys.LOSSES,
+    loss_collection=ops.GraphKeys.LOSSES, # ‘losses’
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
 
     with ops.name_scope(scope, "entropy_loss",
@@ -336,13 +336,13 @@ def build_graph(tf_batch_queue, network_fn):
 
     #############################
     # Specify the loss function #  use_clf=True：Add classification (identification) loss to the network.
-    # 损失函数相关
     #############################
-    if FLAGS.use_clf:
-        if 'AuxLogits' in end_points:
+    if FLAGS.use_clf: # True; clf = classifier的缩写
+        if 'AuxLogits' in end_points: # DistributionNet: False
             tf.losses.softmax_cross_entropy(
                 logits=end_points['AuxLogits'], onehot_labels=labels,
                 label_smoothing=FLAGS.label_smoothing, weights=0.4, scope='aux_loss')
+        
         tf.losses.softmax_cross_entropy(
             logits=logits, onehot_labels=labels,
             label_smoothing=FLAGS.label_smoothing, weights=FLAGS.boot_weight)
@@ -352,17 +352,18 @@ def build_graph(tf_batch_queue, network_fn):
                 tf.losses.softmax_cross_entropy(
                     logits=logits_, onehot_labels=labels,
                     label_smoothing=FLAGS.label_smoothing, weights=FLAGS.sampled_ce_loss_weight)
-                # onehot_labels是one_hot编码的label, shape为[batch_size, num_classes]
-                # logits是神经网络的输出, 注意要求是softmax处理之前的logits，shape为[batch_size, num_classes]
-                # weights 可以是一个标量或矩阵. 如果是标量, 就是对算出来的cross_entropy做缩放; 如果是矩阵, 要求shape为[batch_size, ].
-                # 可以发现, weights实际上是给batch中每个sample设置一个权重, 而不是给label的不同class设置权重.  作者设为0.1
-                # label_smoothing = 0.1 标签平滑：分类问题中错误标注的一种解决方法 https://www.datalearner.com/blog/1051561454844661
-                # Lce的采样样本的特征向量的权重
-
-    if FLAGS.entropy_loss:
+                """
+                onehot_labels是one_hot编码的label, shape为[batch_size, num_classes]
+                logits是神经网络的输出, 注意要求是softmax处理之前的logits，shape为[batch_size, num_classes]
+                weights 可以是一个标量或矩阵. 如果是标量, 就是对算出来的cross_entropy做缩放; 如果是矩阵, 要求shape为[batch_size, ].
+                可以发现, weights实际上是给batch中每个sample设置一个权重, 而不是给label的不同class设置权重.  作者设为0.1
+                label_smoothing = 0.1 标签平滑：分类问题中错误标注的一种解决方法 https://www.datalearner.com/blog/1051561454844661
+                Lce的采样样本的特征向量的权重
+                """
+    if FLAGS.entropy_loss: # DistributionNet: FLAGS.entropy_loss = True
         mu = end_points['PreLogits_mean']
         sig = end_points['PreLogits_sig']
-        loss_entropy(mu, sig)
+        loss_entropy(mu, sig) # 正则项
 
     return end_points
 

@@ -28,7 +28,7 @@ import tensorflow.contrib.slim as slim
 
 networks_map = {
                 'resnet_v1_50': resnet_v1.resnet_v1_50,
-                'resnet_v1_distributions_50': resnet_v1.resnet_v1_distributions_50,
+                'resnet_v1_distributions_50': resnet_v1.resnet_v1_distributions_50, # DistributionNet
                 'resnet_v1_distributions_baseline_50': resnet_v1.resnet_v1_distributions_baseline_50,
                }
 
@@ -71,6 +71,7 @@ def get_network_fn(name, num_classes, weight_decay=0.0, is_training=False, sampl
   def network_fn1(images):
     with slim.arg_scope(arg_scope):
       return func(images, num_classes, is_training=is_training, sample_number=sample_number)
+
   if hasattr(func, 'default_image_size'): # hasattr()函数用于判断对象是否包含对应的属性
     network_fn1.default_image_size = func.default_image_size
   def network_fn2(images, refs):
@@ -78,6 +79,7 @@ def get_network_fn(name, num_classes, weight_decay=0.0, is_training=False, sampl
       return func(images, refs, num_classes, is_training=is_training, sample_number=sample_number)
   if hasattr(func, 'default_image_size'):
     network_fn2.default_image_size = func.default_image_size
+
   if 'clean' in name:
       return network_fn2
   else:
